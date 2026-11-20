@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Free Product CSV Checker: find duplicate products, broken barcodes and price problems</title>
+<meta name="description" content="Check your Shopify or WooCommerce product CSV for duplicate products, repeated SKUs, barcodes broken by Excel and price-format problems. Free, and your file never leaves your computer.">
+<style>
+  :root { --ink:#1d2433; --muted:#5b6475; --line:#e3e6ec; --bg:#f7f8fa; --card:#fff; --accent:#1f6f5c; --warn:#b4541a; --ok:#2e7d32; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  main { max-width: 920px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.9rem; line-height:1.2; margin: 0 0 8px; }
+  h2 { font-size: 1.25rem; margin: 32px 0 12px; }
+  p.lead { color: var(--muted); font-size: 1.1rem; margin: 0 0 24px; }
+  .drop { border: 2px dashed #b9c0cc; border-radius: 12px; background: var(--card); padding: 36px 20px; text-align: center; cursor: pointer; }
+  .drop.over { border-color: var(--accent); background: #eef7f4; }
+  .drop strong { display:block; font-size:1.15rem; margin-bottom:6px; }
+  .btn { display:inline-block; border:0; border-radius:8px; padding:10px 18px; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; }
+  .btn.primary { background: var(--accent); color:#fff; }
+  .btn.link { background:none; color:var(--accent); text-decoration:underline; padding:4px; }
+  .privacy { font-size:.92rem; color:var(--muted); margin-top:10px; }
+  .summary { display:grid; grid-template-columns: repeat(auto-fill,minmax(250px,1fr)); gap:10px; margin-top:14px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .tile .n { font-size:1.6rem; font-weight:700; }
+  .tile.bad .n { color: var(--warn); }
+  .tile.good .n { color: var(--ok); }
+  .tile .label { color: var(--muted); font-size:.95rem; }
+  details { background:var(--card); border:1px solid var(--line); border-radius:10px; margin:10px 0; }
+  summary { cursor:pointer; padding:12px 14px; font-weight:600; }
+  .tablewrap { overflow-x:auto; padding: 0 14px 12px; }
+  table { border-collapse: collapse; width:100%; font-size:.92rem; }
+  th, td { text-align:left; padding:6px 8px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  td.v { font-family: ui-monospace,Menlo,Consolas,monospace; white-space: pre-wrap; word-break: break-word; }
+  .more { color:var(--muted); font-size:.9rem; padding-top:6px; }
+  .cta { background:#123c33; color:#fff; border-radius:12px; padding:22px; margin-top:28px; }
+  .cta h2 { margin-top:0; color:#fff; }
+  .cta a.btn { background:#fff; color:#123c33; }
+  .note { background:#fff8e6; border:1px solid #f0dca8; border-radius:10px; padding:12px 14px; margin-top:14px; }
+  .faq dt { font-weight:600; margin-top:14px; }
+  .faq dd { margin:4px 0 0; color:var(--muted); }
+  footer { color:var(--muted); font-size:.85rem; margin-top:40px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Free Product CSV Checker</h1>
+  <p class="lead">Find duplicate products, repeated SKUs, barcodes broken by Excel and messy prices in your Shopify or WooCommerce product export, in seconds.</p>
+
+  <label class="drop" id="drop">
+    <strong>Drop your product CSV here, or click to choose it</strong>
+    <span>Shopify: Products → Export → CSV. WooCommerce: Products → Export. Any store's CSV works.</span>
+    <input type="file" id="file" accept=".csv,.txt,text/csv" class="hidden">
+  </label>
+  <p class="privacy">🔒 <b>Your file never leaves your computer.</b> The check runs inside this web page; nothing is uploaded or stored. No sign-up.
+    <button class="btn link" id="demo" type="button">No file handy? Try it on a sample shop.</button></p>
+
+  <p id="status" class="privacy hidden" role="status"></p>
+
+  <section id="results" class="hidden" aria-live="polite">
+    <h2 id="r-title"></h2>
+    <p id="r-sub" class="privacy"></p>
+    <div class="summary" id="tiles"></div>
+    <div id="lookalike" class="note hidden"></div>
+    <div id="details"></div>
+    <div class="cta">
+      <h2>Want it fixed for you?</h2>
+      <p>This checker only finds problems. For a fixed price I'll send back a <b>cleaned CSV</b> ready to re-import, a <b>change log</b> of every cell changed, and a <b>duplicate review sheet</b> where you decide on each pair. Nothing is merged or deleted without your OK. From $25 for up to 500 products, and the first 50 rows are free.</p>
+      <a class="btn" id="cta-link" href="https://www.upwork.com/services/product/admin-customer-support-clean-your-shopify-or-woocommerce-product-csv-and-find-duplicate-products-2123377446444905038" target="_blank" rel="noopener">See the clean-up service on Upwork</a>
+    </div>
+  </section>
+
+  <h2>What it checks</h2>
+  <dl class="faq">
+    <dt>Duplicate products</dt><dd>The same item listed twice under slightly different names, or with the same barcode. Sizes, colours, refills and multi-packs are recognised as different products, so they aren't flagged.</dd>
+    <dt>Repeated SKUs and barcodes</dt><dd>The same stock code or barcode on more than one row, which breaks inventory and imports.</dd>
+    <dt>Barcodes damaged by a spreadsheet</dt><dd>Excel turns long barcodes into "1.23457E+11", drops leading zeros and adds ".0". It also checks each barcode's check digit.</dd>
+    <dt>Prices</dt><dd>Currency symbols, decimal commas, thousands separators, text, zero or missing prices, and compare-at prices lower than the price.</dd>
+    <dt>Spelling and spacing</dt><dd>A brand or product type spelled two ways ("Acme" and "ACME"), extra spaces and invisible characters copied from websites.</dd>
+  </dl>
+
+  <h2>Questions</h2>
+  <dl class="faq">
+    <dt>Is my data safe?</dt><dd>Yes. The file is read by your own browser and never sent anywhere. You can even disconnect from the internet after the page loads and it still works.</dd>
+    <dt>Does it change my file?</dt><dd>No. It only reads it and lists what it finds.</dd>
+    <dt>How big a file can it handle?</dt><dd>Tens of thousands of rows are fine on a normal laptop.</dd>
+  </dl>
+
+  <footer>Built by a small catalog clean-up team with AI-assisted tools. Results are automatic suggestions: please check before changing your store.</footer>
+</main>
+
+<script>
+/* Product CSV checker: finds common problems in a shop's product export.
+ * Runs entirely in the browser (or Node for tests). Nothing is uploaded.
+ * Logic ported from catalog_cleanup/clean_catalog.py (same rules, same duplicate verdicts).
+ * Author: Aerith. */
+(function (root) {
+  "use strict";
+
+  // ------------------------------------------------------------------ columns
+  const COLUMN_ALIASES = {
+    handle: ["handle", "producthandle", "slug", "productid", "parentid", "parentsku"],
+    title: ["title", "name", "productname", "producttitle", "itemname"],
+    vendor: ["vendor", "brand", "manufacturer", "make"],
+    type: ["type", "producttype", "category", "productcategory"],
+    sku: ["sku", "variantsku", "itemsku", "productsku", "skucode"],
+    barcode: ["barcode", "variantbarcode", "gtin", "upc", "ean", "isbn"],
+    price: ["price", "variantprice", "saleprice", "unitprice", "regularprice"],
+    compare_price: ["compareatprice", "variantcompareatprice", "msrp", "listprice", "rrp"],
+    description: ["description", "bodyhtml", "body", "productdescription", "longdescription"],
+    tags: ["tags", "keywords"],
+    option1: ["option1value", "size", "variantsize"],
+    option2: ["option2value", "color", "colour", "variantcolor"],
+    option3: ["option3value", "material", "variantmaterial"],
+  };
+  const key = (h) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  function mapColumns(headers) {
+    const found = {};
+    const keyed = {};
+    for (const h of headers) keyed[key(h)] = h;
+    const used = new Set();
+    for (const role of Object.keys(COLUMN_ALIASES)) {
+      for (const alias of COLUMN_ALIASES[role]) {
+        if (alias in keyed && !used.has(keyed[alias])) {
+          found[role] = keyed[alias];
+          used.add(keyed[alias]);
+          break;
+        }
+      }
+    }
+    return found;
+  }
+
+  // ------------------------------------------------------------------ CSV parsing
+  function detectDelimiter(text) {
+    const sample = text.slice(0, 8192);
+    let best = ",", bestScore = -1;
+    for (const d of [",", ";", "\t", "|"]) {
+      const lines = splitRecords(sample, d).slice(0, 10).filter((r) => r.length > 1 || r[0] !== "");
+      if (!lines.length) continue;
+      const n = lines[0].length;
+      if (n < 2) continue;
+      const consistent = lines.filter((r) => r.length === n).length;
+      const score = consistent * 1000 + n;
+      if (score > bestScore) { best = d; bestScore = score; }
+    }
+    return best;
+  }
+
+  function splitRecords(text, delim) {
+    const out = [];
+    let row = [], field = "", inQ = false, i = 0;
+    const n = text.length;
+    while (i < n) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+          inQ = false; i++; continue;
+        }
+        field += c; i++; continue;
+      }
+      if (c === '"' && field === "") { inQ = true; i++; continue; }
+      if (c === delim) { row.push(field); field = ""; i++; continue; }
+      if (c === "\r" || c === "\n") {
+        row.push(field); out.push(row); row = []; field = "";
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        i++; continue;
+      }
+      field += c; i++;
+    }
+    if (field !== "" || row.length) { row.push(field); out.push(row); }
+    return out;
+  }
+
+  function parseCSV(text) {
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    const delimiter = detectDelimiter(text);
+    const recs = splitRecords(text, delimiter).filter((r) => !(r.length === 1 && r[0] === ""));
+    const headers = (recs.shift() || []).map((h) => h);
+    const rows = recs.map((r, i) => {
+      const data = {};
+      headers.forEach((h, j) => { data[h] = r[j] == null ? "" : r[j]; });
+      return { record: i + 1, data, raw: Object.assign({}, data) };
+    });
+    return { headers, rows, delimiter };
+  }
+
+  // ------------------------------------------------------------------ text
+  const SMART = { "‘": "'", "’": "'", "“": '"', "”": '"', "–": "-",
+    "—": "-", " ": " ", " ": " ", "​": "", "﻿": "" };
+  function cleanText(v) {
+    v = v.normalize("NFC").replace(/[‘’“”–—  ​﻿]/g, (c) => SMART[c]);
+    v = Array.from(v).filter((ch) => ch === "\n" || ch === "\t" || !/\p{C}/u.test(ch)).join("");
+    v = v.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n");
+    return v.trim();
+  }
+  const cleanSingleLine = (v) => cleanText(v).replace(/\s+/g, " ").trim();
+
+  // ------------------------------------------------------------------ prices
+  const CURRENCY = /(usd|eur|gbp|aud|cad|thb|us\$|a\$|c\$|[$€£¥฿])/gi;
+  function parsePrice(raw) {
+    let s = cleanSingleLine(raw);
+    if (!s) return [null, null];
+    s = s.replace(CURRENCY, "").replace(/ /g, "");
+    if (s.startsWith("(") && s.endsWith(")")) return [null, "negative price in brackets"];
+    if (!/^-?[0-9][0-9.,]*$/.test(s)) return [null, "not a number"];
+    if (s.includes(",") && s.includes(".")) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+      else s = s.replace(/,/g, "");
+    } else if (s.includes(",")) {
+      const k = s.lastIndexOf(","), head = s.slice(0, k), tail = s.slice(k + 1);
+      if (tail.length === 3 && head) s = s.replace(/,/g, "");
+      else s = head.replace(/,/g, "") + "." + tail;
+    } else if ((s.match(/\./g) || []).length > 1) {
+      s = s.replace(/\./g, "");
+    }
+    const amount = Number(s);
+    if (!isFinite(amount) || s === "" || s === "-") return [null, "not a number"];
+    if (amount < 0) return [amount.toFixed(2), "negative price"];
+    if (amount === 0) return ["0.00", "price is zero"];
+    return [amount.toFixed(2), null];
+  }
+
+  // ------------------------------------------------------------------ barcodes
+  function gtinValid(code) {
+    if (![8, 12, 13, 14].includes(code.length) || !/^\d+$/.test(code)) return false;
+    const d = code.split("").map(Number);
+    const check = d.pop();
+    let total = 0;
+    d.reverse().forEach((x, i) => { total += x * (i % 2 === 0 ? 3 : 1); });
+    return (10 - (total % 10)) % 10 === check;
+  }
+  function gtinKey(raw) {
+    let d = raw.replace(/[\s-]/g, "");
+    if (d.endsWith(".0")) d = d.slice(0, -2);
+    return /^\d+$/.test(d) ? d.replace(/^0+/, "") : d;
+  }
+  function checkBarcode(raw) {
+    const s = cleanSingleLine(raw);
+    if (!s) return ["", null];
+    if (/^[0-9.]+[eE]\+?[0-9]+$/.test(s)) return [s, "sci"];
+    let d = s.replace(/[\s-]/g, "");
+    if (d.endsWith(".0") && /^\d+$/.test(d.slice(0, -2))) d = d.slice(0, -2);
+    if (!/^\d+$/.test(d)) return [s, "nondigit"];
+    if (!gtinValid(d)) {
+      if (d.length === 11 && gtinValid("0" + d)) return ["0" + d, "zero"];
+      return [d, "checkdigit"];
+    }
+    return [d, d !== s ? "format" : null];
+  }
+
+  // ------------------------------------------------------------------ attributes
+  const COLORS = new Set(["black", "white", "red", "blue", "green", "yellow", "orange", "purple", "pink",
+    "brown", "grey", "gray", "silver", "gold", "beige", "navy", "teal", "ivory", "cream", "charcoal",
+    "khaki", "olive", "maroon", "burgundy", "turquoise", "tan", "rose", "coral", "mint", "lavender",
+    "natural", "clear", "transparent", "bronze", "copper", "multicolor", "multicolour"]);
+  const COLOR_ALIASES = { gray: "grey", multicolour: "multicolor", transparent: "clear" };
+  const SIZES = new Set(["xxs", "xs", "s", "m", "l", "xl", "xxl", "xxxl", "2xl", "3xl", "4xl",
+    "small", "medium", "large", "petite", "tall", "regular", "kids", "adult"]);
+  const SIZE_ALIASES = { small: "s", medium: "m", large: "l", "2xl": "xxl", "3xl": "xxxl" };
+  const UNITS = {
+    mg: ["mass", 0.001], g: ["mass", 1], gr: ["mass", 1], gram: ["mass", 1], grams: ["mass", 1],
+    kg: ["mass", 1000], oz: ["mass", 28.3495], lb: ["mass", 453.592], lbs: ["mass", 453.592],
+    ml: ["volume", 1], cl: ["volume", 10], dl: ["volume", 100], l: ["volume", 1000],
+    ltr: ["volume", 1000], litre: ["volume", 1000], liter: ["volume", 1000], floz: ["volume", 29.5735],
+    mm: ["length", 1], cm: ["length", 10], m: ["length", 1000], in: ["length", 25.4],
+    inch: ["length", 25.4], ft: ["length", 304.8],
+    gb: ["storage", 1], tb: ["storage", 1024], mb: ["storage", 1 / 1024],
+    w: ["power", 1], kw: ["power", 1000], v: ["voltage", 1], mah: ["charge", 1],
+    pack: ["count", 1], pk: ["count", 1], pcs: ["count", 1], pc: ["count", 1],
+    count: ["count", 1], ct: ["count", 1], pieces: ["count", 1],
+  };
+  const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const round3 = (x) => Math.round(x * 1000) / 1000;
+
+  function extractAttributes(text) {
+    const t = text.toLowerCase();
+    const a = { quantities: {}, colors: new Set(), sizes: new Set(), models: new Set(), numbers: new Set() };
+    const consumed = [];
+    const PACK = /\b(?:pack|set|box|case)\s+of\s+(\d+)\b|\b(\d+)\s*-?\s*(?:pack|pk|piece|pcs|ct)\b/g;
+    let m;
+    while ((m = PACK.exec(t))) {
+      a.quantities.count = parseFloat(m[1] || m[2]);
+      consumed.push([m.index, m.index + m[0].length]);
+    }
+    const QTY = /(\d+(?:[.,]\d+)?)\s*(fl\.?\s?oz|[a-z]+)\b/g;
+    while ((m = QTY.exec(t))) {
+      const unit = m[2].replace(/[\s.]/g, "");
+      if (has(UNITS, unit)) {
+        const [dim, factor] = UNITS[unit];
+        if (dim === "length" && unit === "m" && t.includes("size")) continue;
+        const value = parseFloat(m[1].replace(",", "."));
+        if (!has(a.quantities, dim)) a.quantities[dim] = round3(value * factor);
+        consumed.push([m.index, m.index + m[0].length]);
+      }
+    }
+    const WORD = /[a-z0-9]+(?:-[a-z0-9]+)*/g;
+    for (const w of t.match(WORD) || []) {
+      if (COLORS.has(w)) a.colors.add(COLOR_ALIASES[w] || w);
+      else if (SIZES.has(w)) a.sizes.add(SIZE_ALIASES[w] || w);
+    }
+    const masked = t.split("");
+    for (const [s, e] of consumed) for (let i = s; i < e; i++) masked[i] = " ";
+    for (const w of masked.join("").match(WORD) || []) {
+      const hasD = /\d/.test(w), hasA = /[a-z]/.test(w);
+      if (hasD && hasA && !SIZES.has(w)) a.models.add(w.replace(/-/g, ""));
+      else if (/^\d+$/.test(w)) a.numbers.add(w.replace(/^0+/, "") || "0");
+    }
+    return a;
+  }
+  const setEq = (x, y) => x.size === y.size && [...x].every((v) => y.has(v));
+  const sj = (s) => [...s].sort().join("/");
+
+  function attributeConflicts(a, b) {
+    const out = [];
+    for (const dim of Object.keys(a.quantities)) {
+      if (!has(b.quantities, dim)) continue;
+      const x = a.quantities[dim], y = b.quantities[dim];
+      if (Math.abs(x - y) > 0.02 * Math.max(x, y)) out.push(`different ${dim}`);
+    }
+    if (a.colors.size && b.colors.size && !setEq(a.colors, b.colors)) out.push(`different colour (${sj(a.colors)} vs ${sj(b.colors)})`);
+    if (a.sizes.size && b.sizes.size && !setEq(a.sizes, b.sizes)) out.push(`different size (${sj(a.sizes)} vs ${sj(b.sizes)})`);
+    if (a.models.size && b.models.size && !setEq(a.models, b.models)) out.push(`different model (${sj(a.models)} vs ${sj(b.models)})`);
+    if (a.numbers.size && b.numbers.size && !setEq(a.numbers, b.numbers)) out.push(`different number (${sj(a.numbers)} vs ${sj(b.numbers)})`);
+    return out;
+  }
+
+  // ------------------------------------------------------------------ titles
+  const STOPWORDS = new Set(["the", "a", "an", "and", "with", "for", "of", "in", "by", "&", "new"]);
+  function titleTokens(title, vendor) {
+    const t = title.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "");
+    const vt = new Set(vendor.toLowerCase().match(/[a-z0-9]+/g) || []);
+    return (t.match(/[a-z0-9]+/g) || []).filter((w) => !STOPWORDS.has(w) && !vt.has(w));
+  }
+  const FORM_WORDS = new Set(["refill", "refills", "replacement", "spare", "pair", "pairs", "set", "pack",
+    "multipack", "kit", "bundle", "duo", "trio", "twin", "twinpack", "case", "cover", "sleeve", "lid",
+    "holder", "stand", "insert", "mini", "travel", "sample", "trial", "gift", "box", "accessory",
+    "accessories", "parts", "part", "cartridge", "filter", "charger", "strap"]);
+  function formConflict(a, b) {
+    const sa = new Set(a), sb = new Set(b);
+    const extra = new Set([...sa].filter((x) => !sb.has(x)).concat([...sb].filter((x) => !sa.has(x))).filter((x) => FORM_WORDS.has(x)));
+    return extra.size ? `different product form (${sj(extra)})` : null;
+  }
+
+  // Python difflib.SequenceMatcher(None, a, b).ratio(), ported for identical scores.
+  function seqRatio(a, b) {
+    const n = b.length;
+    const b2j = new Map();
+    for (let j = 0; j < n; j++) {
+      const c = b[j];
+      if (!b2j.has(c)) b2j.set(c, []);
+      b2j.get(c).push(j);
+    }
+    if (n >= 200) {
+      const ntest = Math.floor(n / 100) + 1;
+      for (const [c, idx] of [...b2j]) if (idx.length > ntest) b2j.delete(c);
+    }
+    function longest(alo, ahi, blo, bhi) {
+      let besti = alo, bestj = blo, bestsize = 0;
+      let j2len = new Map();
+      for (let i = alo; i < ahi; i++) {
+        const nj = new Map();
+        for (const j of b2j.get(a[i]) || []) {
+          if (j < blo) continue;
+          if (j >= bhi) break;
+          const k = (j2len.get(j - 1) || 0) + 1;
+          nj.set(j, k);
+          if (k > bestsize) { besti = i - k + 1; bestj = j - k + 1; bestsize = k; }
+        }
+        j2len = nj;
+      }
+      while (besti > alo && bestj > blo && a[besti - 1] === b[bestj - 1]) { besti--; bestj--; bestsize++; }
+      while (besti + bestsize < ahi && bestj + bestsize < bhi && a[besti + bestsize] === b[bestj + bestsize]) bestsize++;
+      return [besti, bestj, bestsize];
+    }
+    let matches = 0;
+    const queue = [[0, a.length, 0, n]];
+    while (queue.length) {
+      const [alo, ahi, blo, bhi] = queue.pop();
+      const [i, j, k] = longest(alo, ahi, blo, bhi);
+      if (k) {
+        matches += k;
+        if (alo < i && blo < j) queue.push([alo, i, blo, j]);
+        if (i + k < ahi && j + k < bhi) queue.push([i + k, ahi, j + k, bhi]);
+      }
+    }
+    const total = a.length + n;
+    return total ? (2 * matches) / total : 1;
+  }
+  // Cheap upper bound of titleSimilarity (Jaccard, and difflib's quick_ratio bound for the sequence ratio).
+  function similarityUpperBound(a, b) {
+    if (!a.length || !b.length) return 0;
+    const sa = new Set(a), sb = new Set(b);
+    const inter = [...sa].filter((x) => sb.has(x)).length;
+    const jacc = inter / new Set([...sa, ...sb]).size;
+    const x = [...a].sort().join(" "), y = [...b].sort().join(" ");
+    const avail = new Map();
+    for (const ch of y) avail.set(ch, (avail.get(ch) || 0) + 1);
+    let m = 0;
+    for (const ch of x) { const n = avail.get(ch) || 0; if (n > 0) { avail.set(ch, n - 1); m++; } }
+    return Math.max(jacc, (2 * m) / (x.length + y.length));
+  }
+  const pyRound3 = (x) => Math.round(x * 1000) / 1000;
+  function titleSimilarity(a, b) {
+    if (!a.length || !b.length) return 0;
+    const sa = new Set(a), sb = new Set(b);
+    const inter = [...sa].filter((x) => sb.has(x)).length;
+    const jacc = inter / new Set([...sa, ...sb]).size;
+    const seq = seqRatio([...a].sort().join(" "), [...b].sort().join(" "));
+    return pyRound3(Math.max(jacc, seq));
+  }
+
+  function inheritedFields(rows, cols) {
+    const hh = cols.handle;
+    if (!hh) return {};
+    const first = {};
+    for (const r of rows) {
+      const k = r.data[hh].toLowerCase();
+      if (!k) continue;
+      const slot = (first[k] = first[k] || {});
+      for (const role of ["title", "vendor", "type"]) {
+        const c = cols[role];
+        if (c && r.data[c] && !has(slot, role)) slot[role] = r.data[c];
+      }
+    }
+    const out = {};
+    for (const r of rows) {
+      const k = r.data[hh].toLowerCase();
+      if (has(first, k)) {
+        out[r.record] = {};
+        for (const [role, v] of Object.entries(first[k])) if (!r.data[cols[role]]) out[r.record][role] = v;
+      }
+    }
+    return out;
+  }
+
+  function optionEquivalent(a, b) {
+    const na = a.toLowerCase().replace(/[^a-z0-9.]/g, ""), nb = b.toLowerCase().replace(/[^a-z0-9.]/g, "");
+    if (na === nb) return true;
+    for (const al of [SIZE_ALIASES, COLOR_ALIASES]) if ((al[na] || na) === (al[nb] || nb)) return true;
+    const xa = extractAttributes(a), xb = extractAttributes(b);
+    const ka = Object.keys(xa.quantities), kb = Object.keys(xb.quantities);
+    if (ka.length && ka.length === kb.length && ka.every((k) => xb.quantities[k] === xa.quantities[k])) return true;
+    return false;
+  }
+  function optLabel(row, valueCol) {
+    const nameCol = valueCol.replace("Value", "Name").replace("value", "name");
+    const label = nameCol !== valueCol ? row.data[nameCol] || "" : "";
+    return label.toLowerCase() || "option";
+  }
+
+  function findDuplicates(rows, cols) {
+    const th = cols.title, vh = cols.vendor;
+    if (!th) return [];
+    const optCols = ["option1", "option2", "option3"].filter((k) => cols[k]).map((k) => cols[k]);
+    const inherited = inheritedFields(rows, cols);
+    const titles = {};
+    const info = rows.map((r) => {
+      const inh = inherited[r.record] || {};
+      const title = r.data[th] || inh.title || "";
+      titles[r.record] = title;
+      const vendor = vh ? r.data[vh] || inh.vendor || "" : "";
+      const full = [title].concat(optCols.map((c) => r.data[c])).join(" ");
+      return [r, titleTokens(title, vendor), extractAttributes(full), vendor.toLowerCase()];
+    });
+    const candidates = new Set();
+    const MAX_CANDIDATES = 3000000;   // keeps very large files from exhausting browser memory
+    let truncated = false;
+    const addPairs = (ids) => {
+      for (let x = 0; x < ids.length; x++) {
+        for (let y = x + 1; y < ids.length; y++) {
+          if (candidates.size >= MAX_CANDIDATES) { truncated = true; return; }
+          candidates.add(ids[x] * 1e6 + ids[y]);
+        }
+      }
+    };
+    const index = new Map();
+    info.forEach(([, toks], i) => {
+      for (const tok of new Set(toks)) {
+        if (tok.length > 2 && !/^\d+$/.test(tok)) {
+          if (!index.has(tok)) index.set(tok, []);
+          index.get(tok).push(i);
+        }
+      }
+    });
+    for (const ids of index.values()) if (ids.length <= 400) addPairs(ids);
+    // identical titles are always candidates, even when every word is too common to block on
+    const sameTitle = new Map();
+    info.forEach(([, toks], i) => {
+      if (!toks.length) return;
+      const k = [...new Set(toks)].sort().join(" ");
+      if (!sameTitle.has(k)) sameTitle.set(k, []);
+      sameTitle.get(k).push(i);
+    });
+    const oversized = [];
+    for (const ids of sameTitle.values()) {
+      if (ids.length <= 400) addPairs(ids);
+      else oversized.push({ title: titles[info[ids[0]][0].record], count: ids.length });
+    }
+    for (const role of ["barcode", "sku"]) {
+      const h = cols[role];
+      if (!h) continue;
+      const groups = new Map();
+      info.forEach(([r], i) => {
+        if (r.data[h]) {
+          if (!groups.has(r.data[h])) groups.set(r.data[h], []);
+          groups.get(r.data[h]).push(i);
+        }
+      });
+      for (const ids of groups.values()) addPairs(ids);
+    }
+    const hh = cols.handle;
+    const out = [];
+    const norm = (s) => s.replace(/[^a-z0-9]/g, "");
+    for (const c of [...candidates].sort((p, q) => p - q)) {
+      const i = Math.floor(c / 1e6), j = c % 1e6;
+      const [ra, ta, aa, va] = info[i];
+      const [rb, tb, ab, vb] = info[j];
+      const identical = Object.keys(ra.data).every((k) => ra.data[k] === rb.data[k]);
+      const bc = cols.barcode;
+      const sameBarcode = !!(bc && gtinKey(ra.data[bc]) && gtinKey(ra.data[bc]) === gtinKey(rb.data[bc]));
+      const sameSku = !!(cols.sku && ra.data[cols.sku] && ra.data[cols.sku] === rb.data[cols.sku]);
+      // Speed-up only: such a pair would be dropped below for "score < 0.72" anyway.
+      if (!identical && !sameBarcode && !sameSku && similarityUpperBound(ta, tb) < 0.719) continue;
+      const sameHandle = !!(hh && ra.data[hh] && ra.data[hh].toLowerCase() === rb.data[hh].toLowerCase());
+      const optionDiffs = optCols
+        .filter((c2) => ra.data[c2] && rb.data[c2] && !optionEquivalent(ra.data[c2], rb.data[c2]))
+        .map((c2) => `different ${optLabel(ra, c2)} (${ra.data[c2]} vs ${rb.data[c2]})`);
+      if (sameHandle && optionDiffs.length && !(sameBarcode || sameSku)) continue;
+      let reasons = [];
+      const score = titleSimilarity(ta, tb);
+      const conflicts = optionDiffs.slice();
+      for (const cf of attributeConflicts(aa, ab)) {
+        const dim = cf.split(" (")[0];
+        if (!conflicts.some((o) => o.startsWith(dim))) conflicts.push(cf);
+      }
+      const form = formConflict(ta, tb);
+      if (form) conflicts.push(form);
+      const vendorDiffers = !!(va && vb && norm(va) !== norm(vb));
+      let verdict;
+      if (identical) { verdict = "likely duplicate"; reasons = ["every field identical"]; }
+      else if (sameBarcode && !conflicts.length) { verdict = "likely duplicate"; reasons.push("same barcode"); }
+      else if (sameBarcode) { verdict = "owner review"; reasons.push("same barcode", ...conflicts); }
+      else if (score < 0.72 && !sameSku) continue;
+      else if (conflicts.length) { verdict = "look-alike: keep separate"; reasons.push(...conflicts); }
+      else if (vendorDiffers) { verdict = "look-alike: keep separate"; reasons.push("different brand"); }
+      else if (score >= 0.9) verdict = "likely duplicate";
+      else verdict = "owner review";
+      if (sameSku && !reasons.includes("same barcode")) reasons.push("same SKU");
+      if (score >= 0.72) reasons.unshift(`title similarity ${score.toFixed(2)}`);
+      const ph = cols.price;
+      if (ph && verdict !== "look-alike: keep separate") {
+        const pa = Number(ra.data[ph]), pb = Number(rb.data[ph]);
+        if (ra.data[ph] !== "" && rb.data[ph] !== "" && isFinite(pa) && isFinite(pb)) {
+          if (Math.max(pa, pb) > 0 && Math.abs(pa - pb) / Math.max(pa, pb) > 0.3) {
+            reasons.push(`prices differ (${pa.toFixed(2)} vs ${pb.toFixed(2)})`);
+            if (verdict === "likely duplicate" && !(sameBarcode || identical)) verdict = "owner review";
+          }
+        }
+      }
+      out.push({ verdict, a: ra.record, b: rb.record, titleA: titles[ra.record], titleB: titles[rb.record], score, reasons });
+    }
+    const order = { "likely duplicate": 0, "owner review": 1, "look-alike: keep separate": 2 };
+    out.sort((x, y) => order[x.verdict] - order[y.verdict] || y.score - x.score || x.a - y.a);
+    out.oversized = oversized;
+    out.truncated = truncated;
+    return out;
+  }
+
+  function canonicalForms(values) {
+    const groups = new Map();
+    for (const v of values) {
+      if (!v) continue;
+      const k = v.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (!groups.has(k)) groups.set(k, new Map());
+      const g = groups.get(k);
+      g.set(v, (g.get(v) || 0) + 1);
+    }
+    const out = {};
+    for (const g of groups.values()) {
+      if (g.size < 2) continue;
+      const best = [...g.entries()].sort((p, q) => q[1] - p[1] || (q[0] !== q[0].toLowerCase()) - (p[0] !== p[0].toLowerCase()) || (q[0] > p[0] ? 1 : -1))[0][0];
+      for (const v of g.keys()) if (v !== best) out[v] = best;
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ main check
+  // Categories shown to the shop owner, in display order.
+  const CATEGORIES = {
+    duplicates: "Possible duplicate products",
+    sku: "Same SKU on more than one row",
+    barcode_dup: "Same barcode on more than one row",
+    barcode_broken: "Barcodes damaged by a spreadsheet",
+    barcode_invalid: "Barcodes that fail the check digit",
+    price: "Prices with symbols, separators or errors",
+    missing: "Missing titles or prices",
+    spelling: "Brands or product types spelled more than one way",
+    spaces: "Hidden or extra spaces",
+    other: "Other things to check",
+  };
+
+  function check(text) {
+    const { headers, rows, delimiter } = parseCSV(text);
+    const cols = mapColumns(headers);
+    const findings = [];
+    const add = (cat, row, column, value, message) =>
+      findings.push({ cat, record: row ? row.record : "", column: column || "", value: value == null ? "" : value, message });
+
+    // 1. spaces / invisible characters (analysis uses the cleaned value, the file is untouched)
+    const multiline = cols.description;
+    for (const r of rows) {
+      for (const h of headers) {
+        const v = r.data[h];
+        const nv = h === multiline ? cleanText(v) : cleanSingleLine(v);
+        if (nv !== v) {
+          if (h !== multiline) add("spaces", r, h, v, "extra spaces or invisible characters");
+          r.data[h] = nv;
+        }
+      }
+    }
+    const inherited = inheritedFields(rows, cols);
+
+    // 2. per-field checks
+    for (const r of rows) {
+      for (const role of ["price", "compare_price"]) {
+        const h = cols[role];
+        if (!h || !r.data[h]) continue;
+        const [value, problem] = parsePrice(r.data[h]);
+        if (problem) add("price", r, h, r.data[h], problem);
+        else if (value !== null && !/^-?\d+(\.\d+)?$/.test(r.data[h])) add("price", r, h, r.data[h], `not a plain number (would be ${value})`);
+        if (value !== null) r.data[h] = value;
+      }
+      if (cols.barcode) {
+        const h = cols.barcode;
+        const [value, problem] = checkBarcode(r.data[h]);
+        const msg = {
+          sci: ["barcode_broken", "in scientific notation: check the original digits against the supplier file"],
+          zero: ["barcode_broken", `probably lost its leading zero (maybe ${value})`],
+          format: ["barcode_broken", `contains spaces, dashes or a trailing .0 (should be ${value})`],
+          nondigit: ["barcode_invalid", "contains letters or symbols"],
+          checkdigit: ["barcode_invalid", "fails the barcode check digit"],
+        }[problem];
+        if (msg) add(msg[0], r, h, r.data[h], msg[1]);
+      }
+      if (cols.price && cols.compare_price) {
+        const p = Number(r.data[cols.price]), cp = Number(r.data[cols.compare_price]);
+        if (r.data[cols.price] && r.data[cols.compare_price] && isFinite(p) && isFinite(cp) && cp < p)
+          add("other", r, cols.compare_price, r.data[cols.compare_price], "compare-at price is lower than the price");
+      }
+      if (cols.title) {
+        const t = r.data[cols.title];
+        const letters = t.match(/\p{L}/gu) || [];
+        if (!t) { if (!(inherited[r.record] || {}).title) add("missing", r, cols.title, "", "missing title"); }
+        else if (letters.length > 6 && letters.every((c) => c === c.toUpperCase() && c !== c.toLowerCase())) add("other", r, cols.title, t, "title is ALL CAPS");
+        else if (/\b(test|dummy|do not use|copy of|placeholder)\b/i.test(t)) add("other", r, cols.title, t, "looks like a test or placeholder product");
+      }
+      if (cols.price && !r.data[cols.price]) add("missing", r, cols.price, "", "missing price");
+    }
+
+    // 3. spelling variants
+    for (const role of ["vendor", "type"]) {
+      const h = cols[role];
+      if (!h) continue;
+      const mapping = canonicalForms(rows.map((r) => r.data[h]));
+      for (const r of rows) if (has(mapping, r.data[h])) add("spelling", r, h, r.data[h], `also spelled "${mapping[r.data[h]]}" elsewhere`);
+    }
+
+    // 4. identifier collisions
+    for (const [role, cat] of [["sku", "sku"], ["barcode", "barcode_dup"]]) {
+      const h = cols[role];
+      if (!h) continue;
+      const by = new Map();
+      for (const r of rows) if (r.data[h]) { if (!by.has(r.data[h])) by.set(r.data[h], []); by.get(r.data[h]).push(r); }
+      for (const [val, group] of by) {
+        if (group.length < 2) continue;
+        const recs = group.map((r) => r.record).join(", ");
+        for (const r of group) add(cat, r, h, val, `also used on rows ${recs}`.replace(`${r.record}, `, "").replace(`, ${r.record}`, ""));
+      }
+    }
+
+    // 5. duplicates
+    const duplicates = findDuplicates(rows, cols);
+    for (const d of duplicates) {
+      if (d.verdict === "look-alike: keep separate") continue;
+      findings.push({ cat: "duplicates", record: `${d.a} & ${d.b}`, column: "", value: `${d.titleA} / ${d.titleB}`,
+        message: (d.verdict === "likely duplicate" ? "likely the same product: " : "worth a look: ") + d.reasons.join("; ") });
+    }
+    for (const o of duplicates.oversized || [])
+      findings.push({ cat: "other", record: "", column: cols.title, value: o.title,
+        message: `${o.count} rows share this title: too many to compare one by one, so check them yourself` });
+    if (duplicates.truncated)
+      findings.push({ cat: "other", record: "", column: "", value: "",
+        message: "Very large file: some pairs of similar titles were not compared, so a few duplicates may be missing" });
+    const lookalikes = duplicates.filter((d) => d.verdict === "look-alike: keep separate");
+    const counts = {};
+    for (const k of Object.keys(CATEGORIES)) counts[k] = 0;
+    for (const f of findings) counts[f.cat]++;
+    return { headers, delimiter, rowCount: rows.length, cols, findings, duplicates, lookalikes, counts };
+  }
+
+  const api = { check, parseCSV, mapColumns, parsePrice, checkBarcode, gtinValid, titleSimilarity,
+    seqRatio, findDuplicates, cleanSingleLine, CATEGORIES };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.ProductCSVChecker = api;
+})(typeof window !== "undefined" ? window : globalThis);
+</script>
+<script>
+(function () {
+  "use strict";
+  const C = window.ProductCSVChecker;
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const SAMPLE = `"Handle","Title","Vendor","Option1 Name","Option1 Value","Variant SKU","Variant Price","Variant Barcode"
+"ridge-mug"," Ridge  Mug ","Oak & Ash","Color","Slate","RM-S","18.00","0200000000011"
+"river-towel","River Towel","Loom House","Size","Bath","RT-B","32","0200000000028"
+"trail-tin","Trail Tin","Field Supply","Volume","250 ml","TT-250","12.50","0200000000035"
+"reed-tray","Reed Tray","Loom House","Size","Small","TR-S","24.00","0200000000042"
+"ridge-mug","","","Color","Sand","RM-A","18.00","0200000000059"
+"mist-candle","Mist Candle","Oak & Ash","Scent","Pine","MC-P","16.00","0200000000066"
+"trail-canister","Trail Storage Tin","Field Supply","Volume","250 ml","TT-250","12.50","0200000000035"
+"dock-hook","Dock Hook","Field Supply","Finish","Brass","DH-B","8.00","0200000000073"
+"linen-notes","Linen Notes, Pocket"," Paper Mill ","Pages","80","00072","6.00","0200000000080"
+"reed-tray-lg","Reed Tray","Loom House","Size","Large","TR-L","30.00","0200000000097"
+"mug-ridge","Ridge Mug","Oak & Ash","Color","Slate"," RM-S ","18.00","0200000000011"
+"mist-candle-cedar","Mist Candle","Oak & Ash","Scent","Cedar","MC-C","16.00","0200000000103"
+"drift-mat","Drift Mat","Loom House","Size","Small","DM-S","$22.00","0200000000110"
+"dock-wall-hook","Dock Wall Hook","Field Supply","Finish","Brass","DOCK-B","8.00","0200000000073"
+"trail-tin-xl","Trail Tin","Field Supply","Volume","500 ml","TT-500","15.00","0200000000127"
+"river-hand","River Towel","Loom House","Size","Hand","RT-H","14.00","0200000000134"
+"bay-bowl","Bay Bowl","Oak & Ash","Color","Ivory","BB-I"," 20.00 ","0200000000141"
+"linen-notes-wide","Linen Notes, Desk","Paper Mill","Pages","80","00073","8.00","0200000000158"
+"reed-small","Small Reed Tray","Loom House","Size","Small","TR-S","24.00",""
+"fern-cup","Fern Cup","Oak & Ash","Color","Fern","FC-G","10.00","0200000000165"
+"mist-candle-refill","Mist Candle Refill","Oak & Ash","Scent","Pine","MCR-P","10.00","0200000000172"
+"dock-hook-black","Dock Hook","Field Supply","Finish","Black","DH-K","8.00","0200000000189"
+"bay-saucer","Bay  Saucer","Oak & Ash","Color","Ivory","BS-I","9.00","0200000000196"
+"fern-cup-pair","Fern Cup Pair","Oak & Ash","Color","Fern","FC-G2","19.00","0200000000202"
+`;
+  const SHOW = 50;
+
+  function decode(buf) {
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+    catch (e) { return new TextDecoder("windows-1252").decode(buf); }
+  }
+
+  function render(res, name) {
+    $("results").classList.remove("hidden");
+    const problems = Object.entries(res.counts).reduce((s, [, n]) => s + n, 0);
+    $("r-title").textContent = problems ? `${problems} things to check in ${name}` : `No problems found in ${name}`;
+    const found = Object.keys(res.cols);
+    $("r-sub").textContent = `${res.rowCount} rows. Columns recognised: ${found.length ? found.map((r) => res.cols[r]).join(", ") : "none (is the first row the header?)"}.`;
+    const tiles = $("tiles"); tiles.textContent = "";
+    const details = $("details"); details.textContent = "";
+    for (const [cat, label] of Object.entries(C.CATEGORIES)) {
+      const n = res.counts[cat];
+      if (!n && cat === "other") continue;
+      const t = el("div", "tile " + (n ? "bad" : "good"));
+      t.append(el("div", "n", n ? String(n) : "✓"), el("div", "label", label));
+      tiles.append(t);
+      if (!n) continue;
+      const items = res.findings.filter((f) => f.cat === cat);
+      const d = el("details");
+      d.append(el("summary", null, `${label} (${n})`));
+      const wrap = el("div", "tablewrap");
+      const table = el("table");
+      const head = el("tr");
+      for (const h of [cat === "duplicates" ? "Rows" : "Row", "Column", "Value", "What we found"]) head.append(el("th", null, h));
+      table.append(head);
+      for (const f of items.slice(0, SHOW)) {
+        const tr = el("tr");
+        tr.append(el("td", null, String(f.record)), el("td", null, f.column), el("td", "v", f.value), el("td", null, f.message));
+        table.append(tr);
+      }
+      wrap.append(table);
+      if (items.length > SHOW) wrap.append(el("div", "more", `…and ${items.length - SHOW} more.`));
+      d.append(wrap);
+      details.append(d);
+    }
+    const la = $("lookalike");
+    if (res.lookalikes.length) {
+      la.classList.remove("hidden");
+      la.textContent = `${res.lookalikes.length} pairs of products look alike but differ in size, colour, model, pack size or form (for example a refill), so they were not counted as duplicates.`;
+    } else la.classList.add("hidden");
+    $("results").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function run(text, name) {
+    const status = $("status");
+    status.textContent = "Checking " + name + "… large files can take up to a minute.";
+    status.classList.remove("hidden");
+    setTimeout(() => {
+      try { render(C.check(text), name); }
+      catch (e) { alert("Sorry, this file couldn't be read as a CSV: " + e.message); }
+      finally { status.classList.add("hidden"); }
+    }, 30);
+  }
+  function readFile(file) {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => run(decode(new Uint8Array(r.result)), file.name);
+    r.readAsArrayBuffer(file);
+  }
+  $("file").addEventListener("change", (e) => readFile(e.target.files[0]));
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => readFile(e.dataTransfer.files[0]));
+  $("demo").addEventListener("click", () => run(SAMPLE, "the sample shop (made-up data)"));
+})();
+</script>
+</body>
+</html>
